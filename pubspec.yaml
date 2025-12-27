@@ -17,7 +17,7 @@ dependencies:
   get: ^4.6.6
   shared_preferences: ^2.3.3
   provider: ^6.1.2
-  google_fonts: ^6.2.1
+  google_fonts: ^6.2.1  # 注意：这个包会尝试加载 Google Fonts
   lucide_icons: ^0.257.0
   url_launcher: ^6.3.1
   file_picker: ^10.0.0
@@ -62,6 +62,26 @@ flutter:
     - assets/images/logo/
     - assets/audio/
     - rust/THIRD_PARTY_LICENSES.json
+  
+  # ========== 新增的 Web 配置 ==========
+  web:
+    # CanvasKit 配置
+    canvaskit:
+      url: https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/
+      variant: full
+    
+    # 禁用 Google Fonts 自动加载
+    fonts:
+      - family: Roboto
+        fonts:
+          - asset: assets/fonts/Roboto-Regular.ttf  # 如果您有本地字体文件
+            weight: 400
+      - family: Material Icons
+        fonts:
+          - asset: fonts/MaterialIcons-Regular.otf
+    
+    # 渲染器配置
+    renderer: canvaskit  # 明确使用 CanvasKit 渲染器
 
 flutter_intl:
   enabled: true

@@ -10,6 +10,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
   FLUTTER_VERSION: 3.29.2
+  # ========== 新增环境变量 ==========
+  FLUTTER_WEB_CANVASKIT_URL: "https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/"
+  FLUTTER_WEB_CANVASKIT_VARIANT: "full"
+  FLUTTER_WEB_USE_SKIA: "true"
+  DISABLE_GOOGLE_FONTS: "true"
 
 jobs:
   build:
@@ -18,53 +23,222 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+    
     - uses: actions/cache@v4
       with:
         key: web-spa-rust-${{ hashFiles('rust/Cargo.toml') }}
         path: |
           rust/target
+    
     - uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: nightly
         components: rust-src
         target: wasm32-unknown-unknown
+    
     - name: Setup Flutter SDK
       uses: flutter-actions/setup-flutter@v3
       with:
         channel: stable
         version: ${{ env.FLUTTER_VERSION }}
         cache: true
+    
     - name: Configure China mirrors
       run: |
         echo "FLUTTER_STORAGE_BASE_URL=https://mirrors.tuna.tsinghua.edu.cn/flutter" >> $GITHUB_ENV
         echo "PUB_HOSTED_URL=https://mirrors.tuna.tsinghua.edu.cn/dart-pub" >> $GITHUB_ENV
-    - run: flutter clean
-    - run: flutter pub get
+    
+    - name: Clean Flutter
+      run: flutter clean
+    
+    - name: Get Flutter dependencies
+      run: flutter pub get
+    
     - name: Build Rust Library
       run: |
         cargo install flutter_rust_bridge_codegen
         flutter_rust_bridge_codegen build-web --release
-    - run: flutter build web --release --dart-define=FLUTTER_WEB_CANVASKIT_URL=https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/ --pwa-strategy=offline-first --verbose
+    
+    - name: Modify web/index.html before build
+      run: |
+        # 备份原始文件
+        cp web/index.html web/index.html.backup
+        
+        # 修改 index.html 添加 CanvasKit 配置
+        cat > /tmp/inject_config.js << 'EOF'
+        <script>
+          // Flutter Web 配置 - 使用 CDNJS 的 CanvasKit
+          window.flutterConfiguration = {
+            canvasKitBaseUrl: "https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/",
+            canvasKitVariant: "full",
+            useColorEmoji: false,
+            fontFallbacks: ["Arial", "Helvetica", "Microsoft YaHei", "PingFang SC", "sans-serif"]
+          };
+          
+          // 拦截 Google Fonts 加载
+          (function() {
+            const originalCreateElement = document.createElement;
+            document.createElement = function(tagName) {
+              const element = originalCreateElement.call(document, tagName);
+              if (tagName === 'link') {
+                Object.defineProperty(element, 'href', {
+                  set: function(value) {
+                    if (value && value.includes('fonts.googleapis.com')) {
+                      console.log('Blocked Google Fonts:', value);
+                      return;
+                    }
+                    element.setAttribute('href', value);
+                  }
+                });
+              }
+              return element;
+            };
+          })();
+        </script>
+        
+        <style>
+          /* 字体回退配置 */
+          @font-face {
+            font-family: 'Roboto';
+            src: local('Arial'), local('Helvetica'), local('Microsoft YaHei'), local('PingFang SC');
+          }
+          * {
+            font-family: 'Roboto', Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
+          }
+        </style>
+        EOF
+        
+        # 在 head 标签中插入配置
+        sed -i '/<\/head>/i <!-- Flutter CanvasKit Configuration -->' web/index.html
+        sed -i '/<!-- Flutter CanvasKit Configuration -->/r /tmp/inject_config.js' web/index.html
+        
+        echo "✅ Modified web/index.html with CDNJS configuration"
+    
+    - name: Build Flutter Web
+      run: |
+        echo "Building Flutter Web with CDNJS CanvasKit..."
+        echo "CanvasKit URL: ${{ env.FLUTTER_WEB_CANVASKIT_URL }}"
+        
+        # 使用完整构建命令
+        flutter build web \
+          --release \
+          --web-renderer canvaskit \
+          --dart-define=FLUTTER_WEB_CANVASKIT_URL=${{ env.FLUTTER_WEB_CANVASKIT_URL }} \
+          --dart-define=FLUTTER_WEB_CANVASKIT_VARIANT=${{ env.FLUTTER_WEB_CANVASKIT_VARIANT }} \
+          --dart-define=FLUTTER_WEB_USE_SKIA=${{ env.FLUTTER_WEB_USE_SKIA }} \
+          --dart-define=DISABLE_GOOGLE_FONTS=${{ env.DISABLE_GOOGLE_FONTS }} \
+          --pwa-strategy=offline-first \
+          --target=lib/main.dart \
+          --no-tree-shake-icons \
+          --verbose
+        
+        # 验证构建结果
+        echo "Checking build output..."
+        if grep -q "cdnjs.cloudflare.com" build/web/index.html; then
+          echo "✅ Success: CanvasKit configured to use CDNJS"
+        else
+          echo "⚠️ Warning: CanvasKit may not be using CDNJS"
+        fi
+    
+    - name: Post-build modification
+      run: |
+        # 确保构建后的文件也包含配置
+        if [ -f build/web/index.html ]; then
+          # 检查是否已包含配置
+          if ! grep -q "cdnjs.cloudflare.com" build/web/index.html; then
+            echo "Adding CDNJS configuration to built index.html..."
+            sed -i '/<head>/a\
+        <script>\
+          window.flutterConfiguration = {\
+            canvasKitBaseUrl: "https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/",\
+            canvasKitVariant: "full"\
+          };\
+        </script>' build/web/index.html
+          fi
+        fi
+        
+        # 修改 flutter_service_worker.js 添加重定向
+        if [ -f build/web/flutter_service_worker.js ]; then
+          echo "Modifying service worker for CanvasKit redirection..."
+          # 在 fetch 事件处理前添加重定向逻辑
+          sed -i "/self.addEventListener(\"fetch\", (event) => {/a\
+  // Redirect CanvasKit requests to CDNJS\n\
+  if (event.request.url.includes('gstatic.com/flutter-canvaskit')) {\n\
+    console.log('Service Worker: Redirecting CanvasKit to CDNJS');\n\
+    let cdnUrl;\n\
+    if (event.request.url.includes('canvaskit.js')) {\n\
+      cdnUrl = 'https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/canvaskit.js';\n\
+    } else if (event.request.url.includes('canvaskit.wasm')) {\n\
+      cdnUrl = 'https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/canvaskit.wasm';\n\
+    } else {\n\
+      cdnUrl = event.request.url.replace(\n\
+        'https://www.gstatic.com/flutter-canvaskit/',\n\
+        'https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/'\n\
+      );\n\
+    }\n\
+    event.respondWith(\n\
+      fetch(cdnUrl, { mode: 'cors' }).catch(error => {\n\
+        console.error('Service Worker: CDNJS failed', error);\n\
+        return new Response('', {\n\
+          status: 200,\n\
+          headers: { 'Content-Type': 'application/javascript' }\n\
+        });\n\
+      })\n\
+    );\n\
+    return;\n\
+  }\n\
+  \n\
+  // Skip Google Fonts requests\n\
+  if (event.request.url.includes('fonts.gstatic.com')) {\n\
+    console.log('Service Worker: Skipping font request');\n\
+    event.respondWith(\n\
+      new Response('', {\n\
+        status: 200,\n\
+        headers: { \n\
+          'Content-Type': 'font/woff2',\n\
+          'Cache-Control': 'public, max-age=31536000'\n\
+        }\n\
+      })\n\
+    );\n\
+    return;\n\
+  }" build/web/flutter_service_worker.js
+        fi
+    
     - uses: actions/upload-artifact@v4
       with:
         name: web-spa
         path: build/web/
+  
   deploy:
     runs-on: ubuntu-24.04
     needs: build
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/download-artifact@v4
         with:
           name: web-spa
           path: /tmp/console-build
+      
+      - name: Verify deployment files
+        run: |
+          echo "Verifying deployment files..."
+          ls -la /tmp/console-build/
+          echo "Checking index.html configuration..."
+          if grep -q "cdnjs.cloudflare.com" /tmp/console-build/index.html; then
+            echo "✅ CanvasKit is configured to use CDNJS"
+          else
+            echo "❌ CanvasKit configuration not found!"
+            exit 1
+          fi
+      
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v3
         with:
           publish-dir: /tmp/console-build
           production-branch: main
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: "Deploy from GitHub Actions"
+          deploy-message: "Deploy from GitHub Actions - CanvasKit using CDNJS"
           enable-pull-request-comment: false
           enable-commit-comment: true
           overwrites-pull-request-comment: true
@@ -72,22 +246,27 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
         timeout-minutes: 5
+  
   deploy-edgeone:
     runs-on: ubuntu-24.04
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/download-artifact@v4
         with:
           name: web-spa
           path: /tmp/console-build
+      
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+      
       - name: Install EdgeOne CLI
         run: npm install -g edgeone
+      
       - name: Deploy to EdgeOne
         run: edgeone pages deploy /tmp/console-build -n ${{ vars.EDGEONE_PROJECT_NAME }} -t ${{ secrets.EDGEONE_API_TOKEN }}
         timeout-minutes: 10

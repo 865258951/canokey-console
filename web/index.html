@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <base href="$FLUTTER_BASE_HREF">
+    <base href="/">
     <meta charset="UTF-8">
     <meta content="IE=Edge" http-equiv="X-UA-Compatible">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,6 +11,70 @@
     <link rel="icon" type="image/png" href="favicon.png"/>
     <title>CanoKey Console</title>
     <link rel="manifest" href="manifest.json">
+    
+    <!-- 关键配置：强制使用 CDNJS 的 CanvasKit -->
+    <script>
+        // 在 Flutter 加载前设置配置
+        window.flutterConfiguration = {
+            canvasKitBaseUrl: "https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/",
+            canvasKitVariant: "full",
+            useColorEmoji: false,
+            // 字体回退配置，避免加载 Google Fonts
+            fontFallbacks: ["Arial", "Helvetica", "Microsoft YaHei", "PingFang SC", "sans-serif"]
+        };
+        
+        // 阻止 Google Fonts 加载
+        const originalCreateElement = document.createElement;
+        document.createElement = function(tagName) {
+            const element = originalCreateElement.call(document, tagName);
+            if (tagName === 'link') {
+                Object.defineProperty(element, 'href', {
+                    set: function(value) {
+                        if (value && value.includes('fonts.googleapis.com')) {
+                            console.log('阻止 Google Fonts 加载:', value);
+                            return;
+                        }
+                        element.setAttribute('href', value);
+                    }
+                });
+            }
+            return element;
+        };
+    </script>
+    
+    <!-- 字体回退样式 -->
+    <style>
+        /* 预定义系统字体，避免网络加载 */
+        @font-face {
+            font-family: 'Roboto';
+            src: local('Arial'), local('Helvetica'), local('Microsoft YaHei'), local('PingFang SC');
+            font-weight: normal;
+            font-style: normal;
+        }
+        
+        @font-face {
+            font-family: 'Roboto';
+            src: local('Arial Bold'), local('Helvetica Bold'), local('Microsoft YaHei Bold');
+            font-weight: bold;
+            font-style: normal;
+        }
+        
+        @font-face {
+            font-family: 'Material Icons';
+            src: local('Arial');
+        }
+        
+        @font-face {
+            font-family: 'CupertinoIcons';
+            src: local('Arial');
+        }
+        
+        /* 确保所有元素使用系统字体 */
+        * {
+            font-family: 'Roboto', Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
+        }
+    </style>
+    
     <style>
         .center {
             position: absolute;
@@ -22,11 +86,6 @@
     </style>
 </head>
 <body>
-<script>
-    window.flutterConfiguration = {
-        canvasKitBaseUrl: "https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/"
-    };
-</script>
 <script src="flutter_bootstrap.js" async></script>
 <script src="flutter.js" defer></script>
 <div id="loader" class="container">
