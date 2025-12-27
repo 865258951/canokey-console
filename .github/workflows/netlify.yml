@@ -34,12 +34,17 @@ jobs:
         channel: stable
         version: ${{ env.FLUTTER_VERSION }}
         cache: true
+    - name: Configure China mirrors
+      run: |
+        echo "FLUTTER_STORAGE_BASE_URL=https://mirrors.tuna.tsinghua.edu.cn/flutter" >> $GITHUB_ENV
+        echo "PUB_HOSTED_URL=https://mirrors.tuna.tsinghua.edu.cn/dart-pub" >> $GITHUB_ENV
+    - run: flutter clean
     - run: flutter pub get
     - name: Build Rust Library
       run: |
         cargo install flutter_rust_bridge_codegen
         flutter_rust_bridge_codegen build-web --release
-    - run: flutter build web --verbose
+    - run: flutter build web --release --web-renderer html --dart-define=FLUTTER_WEB_CANVASKIT_URL=/assets/canvaskit/ --pwa-strategy=offline-first --verbose
     - uses: actions/upload-artifact@v4
       with:
         name: web-spa

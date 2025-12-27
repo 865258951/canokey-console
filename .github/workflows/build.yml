@@ -100,10 +100,18 @@ jobs:
         channel: stable
         version: ${{ env.FLUTTER_VERSION }}
         cache: true
+    - name: Configure China mirrors for web
+      if: ${{ matrix.target == 'web' }}
+      run: |
+        echo "FLUTTER_STORAGE_BASE_URL=https://mirrors.tuna.tsinghua.edu.cn/flutter" >> $GITHUB_ENV
+        echo "PUB_HOSTED_URL=https://mirrors.tuna.tsinghua.edu.cn/dart-pub" >> $GITHUB_ENV
     - name: pre-build-script script for ${{ matrix.target }}
       run: ${{ matrix.pre-build-script }}
 
     # basic format & linting check
+    - name: Flutter clean (web)
+      if: ${{ matrix.target == 'web' }}
+      run: flutter clean
     - run: flutter pub get
     # - run: dart format --output=none --set-exit-if-changed lib/
     - run: dart analyze
@@ -121,7 +129,11 @@ jobs:
         fi
     - name: Run flutter ${{ matrix.variant }} build (${{ matrix.target }})
       run: |
-        flutter build ${{ matrix.target }} --${{ matrix.variant }} ${{ matrix.build-args }} --verbose
+        if [ "${{ matrix.target }}" == "web" ]; then
+          flutter build web --${{ matrix.variant }} --web-renderer html --dart-define=FLUTTER_WEB_CANVASKIT_URL=/assets/canvaskit/ --pwa-strategy=offline-first --verbose
+        else
+          flutter build ${{ matrix.target }} --${{ matrix.variant }} ${{ matrix.build-args }} --verbose
+        fi
         if [ "${{ matrix.target }}" == "linux" ]; then
           flutter_distributor package --platform linux --targets deb --skip-clean --flutter-build-args=verbose,${{ matrix.variant }}
           mv dist/*/*.deb build/linux/x64/
