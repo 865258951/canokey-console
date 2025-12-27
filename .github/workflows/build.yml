@@ -130,7 +130,7 @@ jobs:
     - name: Run flutter ${{ matrix.variant }} build (${{ matrix.target }})
       run: |
         if [ "${{ matrix.target }}" == "web" ]; then
-          flutter build web --${{ matrix.variant }} --dart-define=FLUTTER_WEB_CANVASKIT_URL=/assets/canvaskit/ --pwa-strategy=offline-first --verbose
+          flutter build web --${{ matrix.variant }} --dart-define=FLUTTER_WEB_CANVASKIT_URL=https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/ --pwa-strategy=offline-first --verbose
         else
           flutter build ${{ matrix.target }} --${{ matrix.variant }} ${{ matrix.build-args }} --verbose
         fi

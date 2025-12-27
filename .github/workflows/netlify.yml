@@ -44,7 +44,7 @@ jobs:
       run: |
         cargo install flutter_rust_bridge_codegen
         flutter_rust_bridge_codegen build-web --release
-    - run: flutter build web --release --dart-define=FLUTTER_WEB_CANVASKIT_URL=/assets/canvaskit/ --pwa-strategy=offline-first --verbose
+    - run: flutter build web --release --dart-define=FLUTTER_WEB_CANVASKIT_URL=https://cdnjs.cloudflare.com/ajax/libs/canvaskit-wasm/0.40.0/ --pwa-strategy=offline-first --verbose
     - uses: actions/upload-artifact@v4
       with:
         name: web-spa
