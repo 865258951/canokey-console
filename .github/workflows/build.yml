@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [apk, linux, windows, macos, ios]
+        target: [apk, linux, windows, macos, ios, web]
         variant: [debug, release]
         include:
           - target: apk
@@ -61,6 +61,13 @@ jobs:
             build-args: "--no-codesign"
             artifact-path: |
               build/ios/iphoneos/Runner.app
+          - target: web
+            os: ubuntu-latest
+            pre-build-script: ""
+            build-args: ""
+            artifact-path: build/web
+            debug-artifact-path: build/web
+            release-artifact-path: build/web
 
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.target }}-${{ matrix.variant }}
@@ -81,6 +88,7 @@ jobs:
       with:
         toolchain: nightly
         components: rust-src
+        target: wasm32-unknown-unknown
     - uses: actions/setup-java@v4
       if: ${{ matrix.target == 'apk' }}
       with:
@@ -103,6 +111,14 @@ jobs:
     # build flutter app
     - name: Install Flutter Rust Bridge
       run: cargo install flutter_rust_bridge_codegen
+    - name: Build Rust web library
+      if: ${{ matrix.target == 'web' }}
+      run: |
+        if [ "${{ matrix.variant }}" == "release" ]; then
+          flutter_rust_bridge_codegen build-web --release
+        else
+          flutter_rust_bridge_codegen build-web
+        fi
     - name: Run flutter ${{ matrix.variant }} build (${{ matrix.target }})
       run: |
         flutter build ${{ matrix.target }} --${{ matrix.variant }} ${{ matrix.build-args }} --verbose
